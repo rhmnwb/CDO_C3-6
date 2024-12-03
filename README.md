@@ -1,6 +1,6 @@
 # CD12352 - Infrastructure as Code Project Solution
 # Raul Herrera Marcos
-## [Udagram](http://www.udagra-loadb-qgupwrn1fsov-1975111282.us-east-1.elb.amazonaws.com)
+## [Udagram](http://udagra-loadb-qgupwrn1fsov-1975111282.us-east-1.elb.amazonaws.com)
 
 ## Infrastructure Diagram
 ![Alt text](infrastructure.svg)
