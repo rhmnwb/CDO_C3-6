@@ -1,0 +1,130 @@
+Description: CD12352 - Infrastructure as Code Project - Udagram
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for tagging resources
+    Default: Udagram
+
+  AutoscalingGroupCapacity:
+    Type: String
+    Description: Desired capacity for the fleet of instances
+    Default: 1
+
+  WebServerImageId:
+    Type: String
+    Description: The image id to use in the EC2 instances
+    Default: ami-0866a3c8686eaeeba # Ubuntu 22.04 LTS
+
+  WebServerVolumeSize:
+    Type: String
+    Description: Web server volume size in GB
+    Default: 10
+
+Resources:
+  # Networking
+  NetworkingStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.us-east-1.amazonaws.com/cdo-c3.6-167029074152-bucket/network.yml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        VpcCidr: 10.0.0.0/16
+        PublicSubnet1Cidr: 10.0.0.0/24
+        PublicSubnet2Cidr: 10.0.1.0/24
+        PrivateSubnet1Cidr: 10.0.2.0/24
+        PrivateSubnet2Cidr: 10.0.3.0/24
+
+  # Storage
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.us-east-1.amazonaws.com/cdo-c3.6-167029074152-bucket/storage.yml
+      Parameters:
+        ProjectName: !Ref ProjectName
+
+  # Web app
+  ## Load Balancing
+  LoadBalancerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.us-east-1.amazonaws.com/cdo-c3.6-167029074152-bucket/load_balancing.yml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        VpcId: !GetAtt NetworkingStack.Outputs.VpcId
+        PublicSubnet1Id: !GetAtt NetworkingStack.Outputs.PublicSubnet1Id
+        PublicSubnet2Id: !GetAtt NetworkingStack.Outputs.PublicSubnet2Id
+
+  ## Security group: inbound 80 from LoadBalancer
+  WebAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Ref ProjectName
+      VpcId: !GetAtt NetworkingStack.Outputs.VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
+
+  ## EC2 LaunchTemplate
+  WebAppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref WebServerImageId
+        SecurityGroupIds:
+          - !Ref WebAppSecurityGroup
+        InstanceType: t2.micro
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: !Ref WebServerVolumeSize
+        IamInstanceProfile:
+          Name: !GetAtt StorageStack.Outputs.S3BucketInstanceProfileId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt-get update -y
+            apt-get install -y nginx
+            # Create a "Hello World" HTML file
+            echo "It works! Udagram, Udacity" > /var/www/html/index.html
+            
+            # Configure Nginx to serve the same resource for all routes
+            cat <<EOF > /etc/nginx/sites-available/default
+            server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+            
+              root /var/www/html;
+              index index.html;
+            
+              location / {
+                try_files /index.html =404;
+              }
+            }
+            EOF
+            
+            # Restart Nginx to apply the new configuration
+            systemctl restart nginx
+
+  ## Create EC2 instances with AutoScalingGroup using WebAppLaunchTemplate
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Split [ ',', !GetAtt NetworkingStack.Outputs.PrivateSubnetList ]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebAppLaunchTemplate
+        Version: !GetAtt WebAppLaunchTemplate.LatestVersionNumber
+      MinSize: '1'
+      DesiredCapacity: !Ref AutoscalingGroupCapacity
+      MaxSize: '2'
+      TargetGroupARNs:
+        - !GetAtt LoadBalancerStack.Outputs.LoadBalancerTargetGroupId
+
+Outputs:
+  AppUrl:
+    Description: The URL of the app
+    Value: !GetAtt LoadBalancerStack.Outputs.LoadBalancerUrl
+    Export:
+      Name: !Sub ${ProjectName}AppUrl

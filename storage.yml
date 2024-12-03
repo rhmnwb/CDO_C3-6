@@ -1,0 +1,66 @@
+Description: CD12352 - Infrastructure as Code Project - S3 Storage
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for tagging resources
+
+Resources:
+  # S3 bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: "static-167029074152-bucket"
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+  # IAM role that permits access to the S3 bucket.
+  S3BucketIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ProjectName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'ec2.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: S3BucketPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                Resource:
+                  - !GetAtt S3Bucket.Arn
+
+  S3BucketInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+        - !Ref S3BucketIamRole
+
+Outputs:
+  S3BucketHostname:
+    Description: The id of the S3 bucket
+    Value: !Sub "${S3Bucket}.s3.${AWS::Region}.amazonaws.com"
+
+  S3BucketInstanceProfileId:
+    Description: The id of IAM instance profile
+    Value: !Ref S3BucketInstanceProfile

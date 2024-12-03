@@ -1,0 +1,96 @@
+Description: CD12352 - Infrastructure as Code Project - Security
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for tagging resources
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The id of the created VPC
+
+  PublicSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: The id of PublicSubnet1
+
+  PublicSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: The id of PublicSubnet2
+
+Resources:
+  # Web app target group with health checks
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
+
+  # Load balancer in public subnets
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref PublicSubnet1Id
+        - !Ref PublicSubnet2Id
+      SecurityGroups:
+        - Ref: LoadBalancerSecurityGroup
+
+  # Load balancer to accept connections from the internet in port 80
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http access to our load balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: LoadBalancerTargetGroup
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+  # forwarding rules
+  LoadBalancerListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [ / ]
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 1
+
+Outputs:
+  LoadBalancerUrl:
+    Description: The URL of the load balancer
+    Value:
+      !Sub
+      - 'http://${url}'
+      - { url: !GetAtt 'LoadBalancer.DNSName' }
+
+  LoadBalancerTargetGroupId:
+    Description: A reference to the created LoadBalancerTargetGroup
+    Value: !Ref LoadBalancerTargetGroup
+
+  LoadBalancerSecurityGroupId:
+    Description: A reference to the created LoadBalancerSecurityGroup
+    Value: !Ref LoadBalancerSecurityGroup
