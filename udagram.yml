@@ -83,30 +83,33 @@ Resources:
         IamInstanceProfile:
           Name: !GetAtt StorageStack.Outputs.S3BucketInstanceProfileId
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
-            apt-get update -y
-            apt-get install -y nginx
-            # Create a "Hello World" HTML file
-            echo "It works! Udagram, Udacity" > /var/www/html/index.html
-            
-            # Configure Nginx to serve the same resource for all routes
-            cat <<EOF > /etc/nginx/sites-available/default
-            server {
-              listen 80 default_server;
-              listen [::]:80 default_server;
-            
-              root /var/www/html;
-              index index.html;
-            
-              location / {
-                try_files /index.html =404;
+          Fn::Base64: !Sub
+            - |
+              #!/bin/bash
+              apt-get update -y
+              apt-get install -y nginx awscli
+              
+              # Download index.html from the S3 bucket
+              aws s3 cp ${S3_BUCKET_URI}/index.html /var/www/html/index.html
+          
+              # Configure Nginx to serve the same resource for all routes
+              cat <<EOF > /etc/nginx/sites-available/default
+              server {
+                listen 80 default_server;
+                listen [::]:80 default_server;
+              
+                root /var/www/html;
+                index index.html;
+              
+                location / {
+                  try_files /index.html =404;
+                }
               }
-            }
-            EOF
-            
-            # Restart Nginx to apply the new configuration
-            systemctl restart nginx
+              EOF
+              
+              # Restart Nginx to apply the new configuration
+              systemctl restart nginx
+            - S3_BUCKET_URI: !GetAtt StorageStack.Outputs.S3BucketUri
 
   ## Create EC2 instances with AutoScalingGroup using WebAppLaunchTemplate
   AutoScalingGroup:
