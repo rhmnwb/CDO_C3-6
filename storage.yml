@@ -57,9 +57,9 @@ Resources:
         - !Ref S3BucketIamRole
 
 Outputs:
-  S3BucketHostname:
-    Description: The id of the S3 bucket
-    Value: !Sub "${S3Bucket}.s3.${AWS::Region}.amazonaws.com"
+  S3BucketUri:
+    Description: The URI of the S3 bucket
+    Value: !Sub "s3://${S3Bucket}"
 
   S3BucketInstanceProfileId:
     Description: The id of IAM instance profile
